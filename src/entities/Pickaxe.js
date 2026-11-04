@@ -170,39 +170,45 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       this.statusContainer.setPosition(this.x, this.y - 44);
     }
 
-    const vx = this.body.velocity.x;
-    const vy = this.body.velocity.y;
+    const body = this.body;
+    const vx = body.velocity.x;
+    const vy = body.velocity.y;
     const speed = Math.hypot(vx, vy);
 
     // -------------------------------------------------------------
     // 1. CONTINUOUS NATURAL ROTATION IN FREE-FALL
     // -------------------------------------------------------------
-    // Aerodynamic tumbling: downward speed acts on asymmetric head to produce spin
     if (Math.abs(vy) > 1.5) {
-      const currentSpin = this.body.angularVelocity;
-      // If spinning slowly, apply natural aerodynamic rotational torque
+      const currentSpin = body.angularVelocity;
       if (Math.abs(currentSpin) < 0.12) {
         const tumbleTorque = (Math.sign(currentSpin || 1)) * Math.min(0.006, Math.abs(vy) * 0.0005);
         this.setAngularVelocity(currentSpin + tumbleTorque);
       }
     }
 
-    // Clamp maximum angular velocity to keep motion readable and visually satisfying
+    // Clamp maximum angular velocity
     const maxSpin = 0.32;
-    if (Math.abs(this.body.angularVelocity) > maxSpin) {
-      this.setAngularVelocity(Math.sign(this.body.angularVelocity) * maxSpin);
+    if (Math.abs(body.angularVelocity) > maxSpin) {
+      this.setAngularVelocity(Math.sign(body.angularVelocity) * maxSpin);
     }
 
-    // Clamp maximum terminal velocity to prevent collision clipping
-    const maxVy = 16.0;
+    // Clamp maximum terminal velocity
+    const maxVy = 18.0;
     if (vy > maxVy) {
-      this.setVelocityY(maxVy);
+      Phaser.Physics.Matter.Matter.Body.setVelocity(body, { x: vx, y: maxVy });
     }
 
     // -------------------------------------------------------------
-    // 2. ANTI-STUCK WATCHDOG
+    // 2. GRAVITY BOOST: If barely moving downward, give extra push
+    // This prevents the pickaxe from floating / hovering between rows
     // -------------------------------------------------------------
-    // If linear velocity drops below threshold for > 1.5 seconds, kick free
+    if (vy < 2.0 && vy >= 0) {
+      Phaser.Physics.Matter.Matter.Body.applyForce(body, body.position, { x: 0, y: 0.025 });
+    }
+
+    // -------------------------------------------------------------
+    // 3. ANTI-STUCK WATCHDOG
+    // -------------------------------------------------------------
     if (speed < GAME_CONFIG.RULES.STUCK_SPEED_THRESHOLD) {
       this.stuckTimer += delta;
       if (this.stuckTimer >= GAME_CONFIG.RULES.STUCK_TIMEOUT_MS) {
@@ -210,29 +216,38 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       }
     } else {
       this.stuckTimer = 0;
-      this.antiStuckAttempts = 0; // Reset consecutive stuck counter on healthy movement
+      this.antiStuckAttempts = 0;
     }
   }
 
   /**
    * Exact Hit & Penetration System
-   * Cuts through and penetrates blocks without stopping downward velocity.
-   * Damps vertical velocity slightly (8-15%), adds horizontal deflection,
-   * maintains minimum downward fall speed, and deducts durability per block.
+   *
+   * Blocks are sensors — Matter does NOT resolve rigid contact, so the pickaxe
+   * keeps moving through. We handle ALL velocity adjustment ourselves here.
+   *
+   * Key insight: we use Phaser.Physics.Matter.Matter.Body.setVelocity (the raw
+   * Matter API) instead of this.setVelocity() so the override is applied to the
+   * compound root body directly and is NOT overwritten by Matter's constraint
+   * solver on this same step.
    */
   onHitBlock(block, impactSpeed, normal) {
     if (this.isDead || block.isDestroyed) return;
 
     this.stuckTimer = 0;
+    const MatterBody = Phaser.Physics.Matter.Matter.Body;
+    const body = this.body;
 
-    // 1. Bedrock Deflection (Border Walls Col 0 & Col 8)
+    // 1. Bedrock Deflection — these are SOLID (not sensors), so Matter already
+    //    bounced us. Just ensure we have enough downward speed and add lateral kick.
     if (block.blockType.isIndestructible) {
       const dx = this.x - block.x;
       const sideSign = dx >= 0 ? 1 : -1;
-      this.setVelocityX(sideSign * 4.2);
-      if (this.body.velocity.y < 3.2) {
-        this.setVelocityY(3.2);
-      }
+      const curVy = body.velocity.y;
+      MatterBody.setVelocity(body, {
+        x: sideSign * 4.5,
+        y: Math.max(curVy, 3.0)
+      });
       this.scene.particleManager.emitSparks(this.x, this.y, 0x6b21a8, 6);
       this.scene.audioManager.playSound('clank');
       this.scene.showFloatingText(this.x, this.y - 12, 'DEFLECT', '#c084fc', 11);
@@ -240,11 +255,11 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       return;
     }
 
-    // 2. Special Bounce Cushion Super-Trampoline
+    // 2. Special Bounce Block
     if (block.blockType.specialEffect === 'bounce') {
-      const impulseY = -block.blockType.bounceImpulse || -13.5;
+      const impulseY = block.blockType.bounceImpulse ? -block.blockType.bounceImpulse : -14.0;
       const impulseX = (Math.random() - 0.5) * 8;
-      this.setVelocity(impulseX, impulseY);
+      MatterBody.setVelocity(body, { x: impulseX, y: impulseY });
       this.setAngularVelocity((Math.random() - 0.5) * 0.4);
       this.scene.particleManager.emitBounceSparkles(block.x, block.y);
       this.scene.audioManager.playSound('boing');
@@ -255,41 +270,50 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       return;
     }
 
-    // 3. Destroy Block Instantly upon contact
+    // 3. Destroy block instantly on contact
     const res = block.breakBlock(true);
+    if (!res.destroyed) return; // Already destroyed by another compound part this frame
     this.blocksMined++;
     this.totalScore += res.score;
 
-    // 4. Durability Decay:
-    // Regular blocks deduct 1 point; hard blocks / ores deduct 2-3 points
+    // 4. Durability decay
     const cost = block.blockType.durabilityCost ?? 1;
     this.reduceDurability(cost);
 
-    // 5. Resistance Damping to vertical velocity (reduce velocity.y by 8-15%)
-    const curVy = this.body.velocity.y;
-    const damping = Phaser.Math.FloatBetween(0.85, 0.92);
+    // 5. Penetration velocity — apply AFTER block is gone so nothing solid remains
+    //
+    //    Strategy:
+    //    - Keep ~90% of current downward speed (slight resistance per block)
+    //    - Clamp to minimum plow speed so clusters never stall the pickaxe
+    //    - Add slight horizontal deflection based on which side of block was hit
+    //    - Preserve / add rotational spin
+
+    const curVx = body.velocity.x;
+    const curVy = body.velocity.y;
+
+    // Resistance damping: 8-15% per block hit
+    const damping = Phaser.Math.FloatBetween(0.86, 0.92);
     let newVy = Math.max(0, curVy) * damping;
 
-    // Maintain a minimum downward fall speed so the pickaxe continuously plows downward through clusters
-    const minDownSpeed = 3.6;
-    if (newVy < minDownSpeed) {
-      newVy = minDownSpeed;
-    }
+    // Minimum plow speed — pickaxe never stalls through clusters
+    const minDown = GAME_CONFIG.PHYSICS.MIN_PLOW_SPEED || 5.0;
+    if (newVy < minDown) newVy = minDown;
 
-    // 6. Horizontal Kick / Deflection depending on which side of the block was struck
+    // Horizontal deflection based on contact side
     const dx = this.x - block.x;
     const sideSign = dx >= 0 ? 1 : -1;
-    const kickVariance = Phaser.Math.FloatBetween(-0.5, 0.5);
-    const kickX = sideSign * Phaser.Math.FloatBetween(0.5, 1.2) + kickVariance;
-    const clampedKickX = Phaser.Math.Clamp(kickX, -1.5, 1.5);
-    const newVx = this.body.velocity.x * 0.75 + clampedKickX;
+    const kickX = sideSign * Phaser.Math.FloatBetween(0.4, 1.0) + Phaser.Math.FloatBetween(-0.5, 0.5);
+    const newVx = curVx * 0.7 + Phaser.Math.Clamp(kickX, -1.5, 1.5);
 
-    // Impact torque from collision side
-    const torqueKick = sideSign * Phaser.Math.FloatBetween(0.04, 0.08);
-    const newSpin = this.body.angularVelocity * 0.8 + torqueKick;
+    // Apply velocity directly on raw Matter body
+    MatterBody.setVelocity(body, { x: newVx, y: newVy });
 
-    this.setVelocity(newVx, newVy);
-    this.setAngularVelocity(newSpin);
+    // Spin from asymmetric impact
+    const torqueKick = sideSign * Phaser.Math.FloatBetween(0.03, 0.07);
+    this.setAngularVelocity(body.angularVelocity * 0.8 + torqueKick);
+
+    // Signal the afterupdate hook to enforce plow speed if solver interferes
+    this._needsPlowBoost = true;
   }
 
   /**

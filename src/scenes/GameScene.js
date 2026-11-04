@@ -89,6 +89,34 @@ export class GameScene extends Phaser.Scene {
   }
 
   setupCollisions() {
+    // Track which blocks were hit THIS physics frame to avoid compound-body multi-fire
+    // (compound body has 4 sub-parts; each can fire collisionstart separately)
+    this._hitBlocksThisFrame = new Set();
+
+    // After every Matter step, clear the per-frame dedup set AND enforce minimum
+    // downward plow velocity AFTER the solver has run (so our setVelocity actually sticks)
+    this.matter.world.on('afterupdate', () => {
+      this._hitBlocksThisFrame.clear();
+
+      if (this.gameState !== 'DROPPING' || !this.pickaxe || this.pickaxe.isDead) return;
+
+      const body = this.pickaxe.body;
+      if (!body) return;
+
+      const vy = body.velocity.y;
+      const minPlow = GAME_CONFIG.PHYSICS.MIN_PLOW_SPEED;
+
+      // If the pickaxe is falling too slow and we recently hit a block, give it a push
+      if (this.pickaxe._needsPlowBoost && vy < minPlow) {
+        Phaser.Physics.Matter.Matter.Body.setVelocity(body, {
+          x: body.velocity.x,
+          y: minPlow
+        });
+      }
+      // Reset boost flag each frame; onHitBlock sets it again if needed
+      this.pickaxe._needsPlowBoost = false;
+    });
+
     this.matter.world.on('collisionstart', (event) => {
       if (this.gameState !== 'DROPPING') return;
 
@@ -97,22 +125,29 @@ export class GameScene extends Phaser.Scene {
         const pair = pairs[i];
         const { bodyA, bodyB } = pair;
 
-        const isPickaxeA = bodyA.label === 'pickaxe' || (bodyA.parent && bodyA.parent.label === 'pickaxe');
-        const isPickaxeB = bodyB.label === 'pickaxe' || (bodyB.parent && bodyB.parent.label === 'pickaxe');
+        // Resolve compound sub-parts → their parent compound body → gameObject
+        const rootA = bodyA.parent || bodyA;
+        const rootB = bodyB.parent || bodyB;
 
-        const isBlockA = bodyA.label === 'block' || (bodyA.parent && bodyA.parent.label === 'block');
-        const isBlockB = bodyB.label === 'block' || (bodyB.parent && bodyB.parent.label === 'block');
+        const isPickaxeA = rootA.label === 'pickaxe';
+        const isPickaxeB = rootB.label === 'pickaxe';
+        const isBlockA   = rootA.label === 'block';
+        const isBlockB   = rootB.label === 'block';
 
         if (isPickaxeA && isBlockB) {
-          const pickaxe = bodyA.gameObject || (bodyA.parent && bodyA.parent.gameObject);
-          const block = bodyB.gameObject || (bodyB.parent && bodyB.parent.gameObject);
+          const pickaxe = rootA.gameObject;
+          const block   = rootB.gameObject;
+          if (!block || this._hitBlocksThisFrame.has(block)) continue;
+          this._hitBlocksThisFrame.add(block);
           const normal = pair.collision ? pair.collision.normal : null;
-          this.processPickaxeBlockCollision(pickaxe, block, bodyA.parent || bodyA, bodyB, normal);
+          this.processPickaxeBlockCollision(pickaxe, block, rootA, rootB, normal);
         } else if (isPickaxeB && isBlockA) {
-          const pickaxe = bodyB.gameObject || (bodyB.parent && bodyB.parent.gameObject);
-          const block = bodyA.gameObject || (bodyA.parent && bodyA.parent.gameObject);
+          const pickaxe = rootB.gameObject;
+          const block   = rootA.gameObject;
+          if (!block || this._hitBlocksThisFrame.has(block)) continue;
+          this._hitBlocksThisFrame.add(block);
           const normal = pair.collision ? { x: -pair.collision.normal.x, y: -pair.collision.normal.y } : null;
-          this.processPickaxeBlockCollision(pickaxe, block, bodyB.parent || bodyB, bodyA, normal);
+          this.processPickaxeBlockCollision(pickaxe, block, rootB, rootA, normal);
         }
       }
     });
@@ -121,7 +156,6 @@ export class GameScene extends Phaser.Scene {
   processPickaxeBlockCollision(pickaxe, block, bodyPickaxe, bodyBlock, normal) {
     if (!pickaxe || !block || pickaxe.isDead || block.isDestroyed) return;
 
-    // Compute relative impact velocity
     const vx = bodyPickaxe.velocity.x;
     const vy = bodyPickaxe.velocity.y;
     const impactSpeed = Math.hypot(vx, vy);
@@ -129,8 +163,7 @@ export class GameScene extends Phaser.Scene {
     pickaxe.onHitBlock(block, impactSpeed, normal);
     this.updateHudStats();
 
-    // Trigger micro-shake (intensity 0.004, 80ms) on heavy hits or ore contacts
-    if (block.blockType.id.includes('ore') || block.blockType.id === 'hard_stone' || block.blockType.id === 'red_volcanic') {
+    if (block.blockType && (block.blockType.id.includes('ore') || block.blockType.id === 'hard_stone' || block.blockType.id === 'red_volcanic')) {
       this.triggerMicroShake(80, 0.004);
     }
   }

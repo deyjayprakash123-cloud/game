@@ -23,10 +23,11 @@ export const GAME_CONFIG = {
 
   // Physics World (Matter.js)
   PHYSICS: {
-    GRAVITY_Y: 1.30,
+    GRAVITY_Y: 2.2,             // Stronger gravity = better downward momentum through blocks
     PICKAXE_SPAWN_X: 270,       // Center of 540px width
     PICKAXE_SPAWN_Y: 150,
-    MIN_IMPACT_VELOCITY: 0.8,   // Velocity threshold to trigger block damage
+    MIN_IMPACT_VELOCITY: 0.0,   // No gate: every contact triggers damage
+    MIN_PLOW_SPEED: 5.0,        // Minimum enforced downward speed while in block clusters
     RANDOM_IMPULSE_X: 2.8,      // Initial lateral push range
     RANDOM_ANGULAR_VEL: 0.18,   // Initial spin rate range
     RANDOM_BOUNCE_NOISE: 0.15   // Micro-impulse deflection jitter on collision
