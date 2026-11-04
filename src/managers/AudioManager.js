@@ -11,6 +11,19 @@ export class AudioManager {
     this.unlocked = false;
     this.masterGain = null;
     this.masterVolume = GAME_CONFIG.AUDIO.MASTER_VOLUME;
+    this.isMuted = false;
+  }
+
+  /**
+   * Toggles audio mute state
+   */
+  toggleMute() {
+    this.isMuted = !this.isMuted;
+    if (this.masterGain && this.ctx) {
+      const vol = this.isMuted ? 0 : this.masterVolume;
+      this.masterGain.gain.setValueAtTime(vol, this.ctx.currentTime);
+    }
+    return this.isMuted;
   }
 
   /**

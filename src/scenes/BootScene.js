@@ -419,6 +419,226 @@ export class BootScene extends Phaser.Scene {
       sCtx.fillRect(11, 20, 10, 6);
       this.textures.addCanvas('icon_danger_skull', sCanvas);
     }
+
+    // 1. Logo Icon (Pickaxe embedded in rock with glowing sparkles)
+    if (!this.textures.exists('ui_logo_icon')) {
+      const lCanvas = document.createElement('canvas');
+      lCanvas.width = 40;
+      lCanvas.height = 40;
+      const ctx = lCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      // Dark stone base
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(8, 20, 24, 16);
+      ctx.fillStyle = '#64748b';
+      ctx.fillRect(10, 22, 20, 6);
+
+      // Embedded pickaxe head
+      ctx.fillStyle = '#38bdf8';
+      ctx.fillRect(14, 8, 14, 4);
+      ctx.fillRect(24, 12, 4, 4);
+      ctx.fillRect(10, 12, 4, 4);
+
+      // Wooden handle angled
+      ctx.fillStyle = '#b45309';
+      ctx.fillRect(18, 12, 4, 6);
+      ctx.fillRect(20, 18, 4, 6);
+
+      // Glowing sparkles
+      ctx.fillStyle = '#fef08a';
+      ctx.fillRect(6, 6, 3, 3);
+      ctx.fillRect(32, 10, 3, 3);
+      ctx.fillRect(28, 28, 2, 2);
+      this.textures.addCanvas('ui_logo_icon', lCanvas);
+    }
+
+    // 2. Target Pumpkin Badge (Jack-o'-lantern)
+    if (!this.textures.exists('icon_pumpkin')) {
+      const pCanvas = document.createElement('canvas');
+      pCanvas.width = 36;
+      pCanvas.height = 36;
+      const ctx = pCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      // Stem
+      ctx.fillStyle = '#15803d';
+      ctx.fillRect(16, 4, 4, 5);
+
+      // Pumpkin body (bright orange)
+      ctx.fillStyle = '#ea580c';
+      ctx.beginPath();
+      ctx.arc(18, 20, 14, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Ridges (darker orange)
+      ctx.fillStyle = '#c2410c';
+      ctx.fillRect(12, 8, 3, 24);
+      ctx.fillRect(21, 8, 3, 24);
+
+      // Glowing eyes & toothy mouth (bright yellow)
+      ctx.fillStyle = '#fde047';
+      // Left eye triangle
+      ctx.fillRect(11, 14, 4, 3);
+      // Right eye triangle
+      ctx.fillRect(21, 14, 4, 3);
+      // Nose
+      ctx.fillRect(17, 18, 2, 2);
+      // Jack-o'-lantern mouth
+      ctx.fillRect(11, 23, 14, 3);
+      ctx.fillStyle = '#ea580c';
+      ctx.fillRect(13, 23, 2, 2);
+      ctx.fillRect(19, 23, 2, 2);
+      this.textures.addCanvas('icon_pumpkin', pCanvas);
+    }
+
+    // 3. Spin / Drop Arrow Icon (circular rotating arrows)
+    if (!this.textures.exists('icon_spin_arrow')) {
+      const spinCanvas = document.createElement('canvas');
+      spinCanvas.width = 54;
+      spinCanvas.height = 54;
+      const ctx = spinCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 5;
+      ctx.lineCap = 'round';
+
+      // Circular arc
+      ctx.beginPath();
+      ctx.arc(27, 27, 18, Math.PI * 0.25, Math.PI * 1.85);
+      ctx.stroke();
+
+      // Arrow head at top
+      ctx.fillStyle = '#ffffff';
+      ctx.beginPath();
+      ctx.moveTo(33, 4);
+      ctx.lineTo(44, 15);
+      ctx.lineTo(31, 18);
+      ctx.closePath();
+      ctx.fill();
+
+      this.textures.addCanvas('icon_spin_arrow', spinCanvas);
+    }
+
+    // 4. Turbo Fast-Fall Icon (Double chevrons >>)
+    if (!this.textures.exists('icon_turbo')) {
+      const tCanvas = document.createElement('canvas');
+      tCanvas.width = 36;
+      tCanvas.height = 36;
+      const ctx = tCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      ctx.fillStyle = '#ffffff';
+      // First chevron >
+      ctx.beginPath();
+      ctx.moveTo(8, 8);
+      ctx.lineTo(18, 18);
+      ctx.lineTo(8, 28);
+      ctx.lineTo(12, 28);
+      ctx.lineTo(22, 18);
+      ctx.lineTo(12, 8);
+      ctx.closePath();
+      ctx.fill();
+
+      // Second chevron >
+      ctx.beginPath();
+      ctx.moveTo(18, 8);
+      ctx.lineTo(28, 18);
+      ctx.lineTo(18, 28);
+      ctx.lineTo(22, 28);
+      ctx.lineTo(32, 18);
+      ctx.lineTo(22, 8);
+      ctx.closePath();
+      ctx.fill();
+
+      this.textures.addCanvas('icon_turbo', tCanvas);
+    }
+
+    // 5. Sound Speaker Icon
+    if (!this.textures.exists('icon_speaker')) {
+      const spCanvas = document.createElement('canvas');
+      spCanvas.width = 36;
+      spCanvas.height = 36;
+      const ctx = spCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      ctx.fillStyle = '#ffffff';
+      // Speaker base & cone
+      ctx.fillRect(8, 13, 6, 10);
+      ctx.beginPath();
+      ctx.moveTo(14, 13);
+      ctx.lineTo(22, 7);
+      ctx.lineTo(22, 29);
+      ctx.lineTo(14, 23);
+      ctx.closePath();
+      ctx.fill();
+
+      // Sound waves
+      ctx.strokeStyle = '#ffffff';
+      ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      ctx.arc(22, 18, 6, -Math.PI * 0.3, Math.PI * 0.3);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(22, 18, 10, -Math.PI * 0.35, Math.PI * 0.35);
+      ctx.stroke();
+
+      this.textures.addCanvas('icon_speaker', spCanvas);
+    }
+
+    // 6. Sound Mute Icon
+    if (!this.textures.exists('icon_speaker_mute')) {
+      const spmCanvas = document.createElement('canvas');
+      spmCanvas.width = 36;
+      spmCanvas.height = 36;
+      const ctx = spmCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      ctx.fillStyle = '#94a3b8';
+      ctx.fillRect(8, 13, 6, 10);
+      ctx.beginPath();
+      ctx.moveTo(14, 13);
+      ctx.lineTo(22, 7);
+      ctx.lineTo(22, 29);
+      ctx.lineTo(14, 23);
+      ctx.closePath();
+      ctx.fill();
+
+      // Red slash
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(7, 7);
+      ctx.lineTo(29, 29);
+      ctx.stroke();
+
+      this.textures.addCanvas('icon_speaker_mute', spmCanvas);
+    }
+
+    // 7. Settings Slider Icon
+    if (!this.textures.exists('icon_settings')) {
+      const setCanvas = document.createElement('canvas');
+      setCanvas.width = 36;
+      setCanvas.height = 36;
+      const ctx = setCanvas.getContext('2d');
+      ctx.imageSmoothingEnabled = false;
+
+      ctx.fillStyle = '#94a3b8';
+      // 3 slider tracks
+      ctx.fillRect(6, 10, 24, 2);
+      ctx.fillRect(6, 18, 24, 2);
+      ctx.fillRect(6, 26, 24, 2);
+
+      // Knobs
+      ctx.fillStyle = '#f8fafc';
+      ctx.fillRect(12, 7, 5, 8);
+      ctx.fillRect(22, 15, 5, 8);
+      ctx.fillRect(10, 23, 5, 8);
+
+      this.textures.addCanvas('icon_settings', setCanvas);
+    }
   }
 
   // -------------------------------------------------------------

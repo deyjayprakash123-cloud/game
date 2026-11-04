@@ -17,13 +17,13 @@ export class ParticleManager {
    * Pre-allocates permanent reusable particle emitters
    */
   initEmitters() {
-    // 1. Debris Emitter (for 4-6 debris pixel particles on block hits & breaks)
+    // 1. Debris Emitter (for 4 tiny debris squares on block destruction)
     this.debrisEmitter = this.scene.add.particles(0, 0, 'particle_debris', {
-      speed: { min: 50, max: 190 },
+      speed: { min: 45, max: 140 },
       angle: { min: 0, max: 360 },
-      gravityY: 420,
-      scale: { start: 0.85, end: 0.2 },
-      lifespan: { min: 250, max: 400 },
+      gravityY: 360,
+      scale: { start: 0.5, end: 0.15 },
+      lifespan: { min: 200, max: 350 },
       emitting: false
     }).setDepth(50);
 
@@ -90,14 +90,14 @@ export class ParticleManager {
   }
 
   /**
-   * Block Break: Combined debris spray and optional ore glints
+   * Block Break: Emit 4 tiny debris squares matching block color upon destruction
    */
   emitBlockBreak(x, y, color, isOre = false) {
     this.debrisEmitter.setParticleTint(color);
-    this.debrisEmitter.explode(10, x, y);
+    this.debrisEmitter.explode(4, x, y);
 
     if (isOre) {
-      this.emitOreSparkles(x, y, color, 10);
+      this.emitOreSparkles(x, y, color, 6);
     }
   }
 

@@ -70,30 +70,45 @@ export class Block extends Phaser.Physics.Matter.Image {
     const score = this.blockType.scoreValue || 0;
     const isOre = this.blockType.id.includes('ore');
 
-    // Visual Debris burst (and ore sparkles if ore)
+    // Visual Debris burst: 4 tiny debris squares matching block color
     this.scene.particleManager.emitBlockBreak(this.x, this.y, this.blockType.particleColor, isOre);
 
-    // Micro-shake on destruction or ore break
-    if (isOre || this.blockType.maxHp >= 40) {
-      this.scene.triggerMicroShake(80, 0.004);
-    }
+    // Camera Shake: Add a 0.003 intensity micro-shake for 60ms on every block break to make the plowing feel weighty
+    this.scene.triggerMicroShake(60, 0.003);
 
     // Audio
     if (this.blockType.breakSound) {
       this.scene.audioManager.playSound(this.blockType.breakSound);
     }
 
-    // Floating Score text
-    // Spawn crisp pixel-font score popups (+100, +500) that float upward and fade out over 600ms on ore destruction
-    if (score > 0) {
-      let textColor = '#ffffff';
-      if (this.blockType.id === 'gold_ore') textColor = '#fde047';
-      else if (this.blockType.id === 'diamond_ore') textColor = '#38bdf8';
+    // Floating win numbers: Whenever an ore or gold block is destroyed,
+    // spawn the value (e.g. "+0.30", "+1.50") floating upward from the tile coordinate and fading over 400ms
+    let winValue = 0;
+    if (this.blockType.id === 'gold_ore') {
+      winValue = 1.50;
+    } else if (this.blockType.id === 'copper_ore') {
+      winValue = 0.30;
+    } else if (this.blockType.id === 'diamond_ore') {
+      winValue = 3.00;
+    } else if (this.blockType.id === 'emerald_ore') {
+      winValue = 6.00;
+    } else if (isOre) {
+      winValue = Math.max(0.10, Number((score / 100).toFixed(2)));
+    } else {
+      winValue = Math.max(0.05, Number((score / 200).toFixed(2)));
+    }
+
+    if (this.scene.addWin) {
+      this.scene.addWin(winValue);
+    }
+
+    if (isOre) {
+      let textColor = '#fde047';
+      if (this.blockType.id === 'diamond_ore') textColor = '#38bdf8';
       else if (this.blockType.id === 'emerald_ore') textColor = '#4ade80';
       else if (this.blockType.id === 'copper_ore') textColor = '#fb923c';
-      else if (isOre) textColor = '#38bdf8';
 
-      this.scene.showFloatingText(this.x, this.y - 6, `+${score}`, textColor, isOre ? 16 : 13, 600);
+      this.scene.showFloatingText(this.x, this.y - 6, `+${winValue.toFixed(2)}`, textColor, 16, 400);
     }
 
     // Execute Special Block Behavior

@@ -40,10 +40,10 @@ export class FloatingTextPool {
    * @param {string} content - Text string to display (e.g., "+100")
    * @param {string} color - Hex color string
    * @param {number} fontSize - Font size in pixels
-   * @param {number} duration - Fade/float duration in ms (default 600ms)
+   * @param {number} duration - Fade/float duration in ms (default 400ms)
    * @param {number} floatDistance - Pixels to float upward (default 38px)
    */
-  spawn(x, y, content, color = '#ffffff', fontSize = 14, duration = 600, floatDistance = 38) {
+  spawn(x, y, content, color = '#ffffff', fontSize = 14, duration = 400, floatDistance = 38) {
     // Retrieve an inactive text instance, or reuse the oldest active one
     let entry = this.pool.find(item => !item.text.active);
     if (!entry) {

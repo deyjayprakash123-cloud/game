@@ -23,6 +23,14 @@ export class GameScene extends Phaser.Scene {
     this.score = 0;
     this.blocksBroken = 0;
 
+    // Betting, Cash & Turbo Controls (Exact layout from reference video)
+    this.cashAmount = 40000.00;
+    this.winAmount = 0.00;
+    this.betSteps = [100, 250, 500, 1000, 2500, 5000, 10000];
+    this.betIndex = 5; // Default 5,000.00
+    this.betAmount = this.betSteps[this.betIndex];
+    this.isTurbo = false;
+
     // Ensure Phaser texture smoothing is disabled globally & round pixels enabled
     this.cameras.main.setRoundPixels(true);
     this.textures.each((texture) => {
@@ -53,15 +61,18 @@ export class GameScene extends Phaser.Scene {
     // Initialize Mine Shaft Grid
     this.mineGenerator.initShaft();
 
-    // Spawn Pickaxe
+    // World entrance selector wheel decoration (seated at top of shaft entrance)
+    this.createEntranceWheel();
+
+    // Spawn Pickaxe inside the wheel ready for drop
     this.spawnPickaxe(this.selectedTier);
 
     // Setup Physics Collisions
     this.setupCollisions();
 
-    // Setup Screen Overlay HUD & Start Screen
-    this.createHUD();
-    this.createStartOverlay();
+    // Setup Top Header & Bottom Control Deck (Reference UI Layout)
+    this.createTopHeader();
+    this.createBottomControlDeck();
 
     // Universal Mobile Safari / Chrome Web Audio unlock on very first interaction
     this.input.once('pointerdown', () => {
@@ -70,7 +81,10 @@ export class GameScene extends Phaser.Scene {
 
     // Touch / Pointer input for Tap-to-Nudge
     this.input.on('pointerdown', (pointer) => {
-      if (this.gameState === 'DROPPING') {
+      if (pointer.y >= 830) return; // Do not nudge when interacting with bottom control deck
+      if (this.gameState === 'READY') {
+        this.startRun();
+      } else if (this.gameState === 'DROPPING') {
         this.pickaxe.nudge();
       }
     });
@@ -83,9 +97,14 @@ export class GameScene extends Phaser.Scene {
     this.pickaxe = new Pickaxe(
       this,
       GAME_CONFIG.PHYSICS.PICKAXE_SPAWN_X,
-      GAME_CONFIG.PHYSICS.PICKAXE_SPAWN_Y,
+      175,
       tierId
     );
+
+    // Freeze in place inside the wheel during READY state
+    if (this.gameState === 'READY' && this.pickaxe.body) {
+      Phaser.Physics.Matter.Matter.Body.setStatic(this.pickaxe.body, true);
+    }
   }
 
   setupCollisions() {
@@ -247,309 +266,476 @@ export class GameScene extends Phaser.Scene {
   }
 
   // -------------------------------------------------------------
-  // HUD & UI (TikTok / Shorts Safe Zone: Y: 140px to Y: 300px)
-  // Keeps score, depth, and durability bar completely safe from TikTok top nav & right buttons
+  // 1. TOP HEADER (Game Logo + Target/Collection Badge)
   // -------------------------------------------------------------
-  createHUD() {
-    this.hudContainer = this.add.container(0, 0).setScrollFactor(0).setDepth(200);
+  createTopHeader() {
+    this.topHeader = this.add.container(0, 0).setScrollFactor(0).setDepth(260);
 
-    // Dark sleek panel card situated strictly inside [155, 255] (Y: 140-300 safe zone)
-    const panel = this.add.graphics();
-    panel.fillStyle(0x090b14, 0.90);
-    panel.fillRoundedRect(40, 155, 460, 100, 12);
-    panel.lineStyle(2, 0x1e293b, 1);
-    panel.strokeRoundedRect(40, 155, 460, 100, 12);
+    // Top-Left: Game logo ("FALLING PICKAXE") with a small glowing pixel icon
+    const logoIcon = this.add.image(32, 40, 'ui_logo_icon').setDisplaySize(34, 34);
 
-    // Subtle horizontal divider line inside HUD card
-    panel.lineStyle(1, 0x1e293b, 0.8);
-    panel.lineBetween(55, 214, 485, 214);
-
-    // 1. Score Widget (Top Left)
-    const coin = this.add.image(68, 185, 'ui_coin').setDisplaySize(24, 24);
-    const scoreLabel = this.add.text(88, 175, 'SCORE', {
-      fontFamily: '"Press Start 2P", monospace',
-      fontSize: '8px',
-      color: '#94a3b8'
-    }).setOrigin(0, 0.5);
-
-    this.scoreText = this.add.text(88, 195, '0', {
-      fontFamily: '"Press Start 2P", monospace',
-      fontSize: '15px',
-      fontStyle: 'bold',
-      color: '#fef08a'
-    }).setOrigin(0, 0.5);
-
-    // 2. Depth Widget (Top Center)
-    const depthLabel = this.add.text(GAME_CONFIG.WIDTH / 2, 175, 'DEPTH', {
-      fontFamily: '"Press Start 2P", monospace',
-      fontSize: '8px',
-      color: '#94a3b8'
-    }).setOrigin(0.5);
-
-    this.depthText = this.add.text(GAME_CONFIG.WIDTH / 2, 195, '0m', {
-      fontFamily: '"Press Start 2P", monospace',
-      fontSize: '15px',
-      fontStyle: 'bold',
-      color: '#38bdf8'
-    }).setOrigin(0.5);
-
-    // 3. Pickaxe Tier Badge (Top Right, safe within X: 440)
-    const tierLabel = this.add.text(435, 175, 'TIER', {
-      fontFamily: '"Press Start 2P", monospace',
-      fontSize: '8px',
-      color: '#94a3b8'
-    }).setOrigin(0.5);
-
-    this.tierBadge = this.add.text(435, 195, 'WOOD', {
-      fontFamily: '"Press Start 2P", monospace',
-      fontSize: '11px',
-      fontStyle: 'bold',
-      color: '#f59e0b'
-    }).setOrigin(0.5);
-
-    // 4. Durability Bar (Bottom Row: Y: 218 to Y: 250)
-    const heart = this.add.image(68, 234, 'ui_heart').setDisplaySize(18, 18);
-
-    // Bar Track
-    const barTrack = this.add.graphics();
-    barTrack.fillStyle(0x1e293b, 1);
-    barTrack.fillRoundedRect(88, 227, 275, 14, 4);
-    barTrack.lineStyle(1, 0x334155, 1);
-    barTrack.strokeRoundedRect(88, 227, 275, 14, 4);
-
-    // Dynamic Bar Fill
-    this.durabilityBarFill = this.add.graphics();
-
-    // Durability text
-    this.durabilityValueText = this.add.text(435, 234, '50 HP', {
+    const logoText1 = this.add.text(54, 31, 'FALLING', {
       fontFamily: '"Press Start 2P", monospace',
       fontSize: '10px',
       fontStyle: 'bold',
-      color: '#e2e8f0'
+      color: '#ffffff',
+      stroke: '#000000',
+      strokeThickness: 3
+    });
+
+    const logoText2 = this.add.text(54, 46, 'PICKAXE', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      color: '#f59e0b',
+      stroke: '#000000',
+      strokeThickness: 3
+    });
+
+    // Glowing pixel spark
+    const spark = this.add.circle(48, 22, 2.5, 0xfef08a);
+    this.tweens.add({
+      targets: spark,
+      alpha: 0.2,
+      scale: 1.6,
+      duration: 600,
+      yoyo: true,
+      repeat: -1
+    });
+
+    // Top-Right: Current target/collection badge (e.g., stone pickaxe icon + pumpkin or milestone multiplier)
+    const moonCrescent = this.add.graphics();
+    moonCrescent.fillStyle(0xfef3c7, 0.16);
+    moonCrescent.fillCircle(455, 46, 26);
+
+    const badgeCard = this.add.graphics();
+    badgeCard.fillStyle(0x090d16, 0.92);
+    badgeCard.fillRoundedRect(375, 16, 142, 46, 8);
+    badgeCard.lineStyle(1.5, 0x475569, 1);
+    badgeCard.strokeRoundedRect(375, 16, 142, 46, 8);
+
+    // Inner divider
+    badgeCard.lineStyle(1, 0x334155, 0.8);
+    badgeCard.lineBetween(445, 20, 445, 58);
+
+    // Stone pickaxe icon
+    const pickaxeBadge = this.add.image(410, 39, 'pickaxe_stone').setDisplaySize(28, 28);
+
+    // Pumpkin badge
+    const pumpkinBadge = this.add.image(480, 39, 'icon_pumpkin').setDisplaySize(28, 28);
+
+    // Badge label
+    const targetLabel = this.add.text(445, 12, 'TARGET x2.5', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '7px',
+      fontStyle: 'bold',
+      color: '#fde047',
+      stroke: '#000000',
+      strokeThickness: 2
     }).setOrigin(0.5);
 
-    this.hudContainer.add([
-      panel,
-      coin, scoreLabel, this.scoreText,
-      depthLabel, this.depthText,
-      tierLabel, this.tierBadge,
-      heart, barTrack, this.durabilityBarFill, this.durabilityValueText
+    this.topHeader.add([
+      logoIcon, logoText1, logoText2, spark,
+      moonCrescent, badgeCard, pickaxeBadge, pumpkinBadge, targetLabel
     ]);
-
-    // Hidden during READY overlay; made visible on drop launch
-    this.hudContainer.setVisible(false);
-    this.updateHudStats();
-  }
-
-  updateHudStats() {
-    if (!this.pickaxe) return;
-
-    if (this.scoreText) {
-      this.scoreText.setText(`${this.pickaxe.totalScore}`);
-    }
-
-    if (this.depthText) {
-      this.depthText.setText(`${this.depthMeters}m`);
-    }
-
-    if (this.tierBadge) {
-      this.tierBadge.setText(this.pickaxe.tierData.name.replace(' Pickaxe', '').toUpperCase());
-      this.tierBadge.setColor(this.pickaxe.tierData.colorHex || '#f59e0b');
-    }
-
-    if (this.durabilityBarFill) {
-      const curHp = Math.max(0, this.pickaxe.durability);
-      const maxHp = this.pickaxe.maxDurability || 50;
-      const pct = Math.min(1, Math.max(0, curHp / maxHp));
-
-      this.durabilityBarFill.clear();
-      let fillColor = 0x22c55e;
-      if (pct < 0.25) {
-        fillColor = 0xef4444;
-      } else if (pct < 0.55) {
-        fillColor = 0xf59e0b;
-      }
-
-      this.durabilityBarFill.fillStyle(fillColor, 1);
-      const fillW = Math.round(275 * pct);
-      if (fillW > 0) {
-        this.durabilityBarFill.fillRoundedRect(88, 227, fillW, 14, 3);
-      }
-    }
-
-    if (this.durabilityValueText) {
-      this.durabilityValueText.setText(`${this.pickaxe.durability}/${this.pickaxe.maxDurability}`);
-    }
   }
 
   // -------------------------------------------------------------
-  // START OVERLAY ("Tap to Drop" - Mobile Safari Audio Unlock)
+  // 2. WORLD ENTRANCE SELECTOR WHEEL
   // -------------------------------------------------------------
-  createStartOverlay() {
-    this.startOverlay = this.add.container(0, 0).setScrollFactor(0);
+  createEntranceWheel() {
+    this.entranceWheelContainer = this.add.container(GAME_CONFIG.WIDTH / 2, 175).setDepth(20);
 
-    // Dark tint backdrop
-    const shade = this.add.rectangle(
-      GAME_CONFIG.WIDTH / 2,
-      GAME_CONFIG.HEIGHT / 2,
-      GAME_CONFIG.WIDTH,
-      GAME_CONFIG.HEIGHT,
-      0x05040a,
-      0.7
-    );
-    this.startOverlay.add(shade);
-
-    // Animated Dwarven Selector Wheel Frame & Pickaxe Preview
-    const wheel = this.add.image(GAME_CONFIG.WIDTH / 2, 155, 'selector_wheel_frame')
-      .setDisplaySize(170, 170)
+    // Mechanical selector wheel frame
+    this.entranceWheel = this.add.image(0, 0, 'selector_wheel_frame')
+      .setDisplaySize(160, 160)
       .setAlpha(0.95);
-    
-    const previewIcon = this.add.image(GAME_CONFIG.WIDTH / 2, 155, getTierData(this.selectedTier).texture)
-      .setDisplaySize(78, 78);
 
+    // Pumpkin perched on top of the wheel
+    const wheelPumpkin = this.add.image(0, -78, 'icon_pumpkin')
+      .setDisplaySize(28, 28);
+
+    // Left and right pointers
+    const leftPointer = this.add.triangle(-52, 0, 0, -10, 0, 10, 14, 0, 0xf59e0b);
+    const rightPointer = this.add.triangle(52, 0, 0, -10, 0, 10, -14, 0, 0xf59e0b);
+
+    this.entranceWheelContainer.add([this.entranceWheel, wheelPumpkin, leftPointer, rightPointer]);
+
+    // Idle slow ambient rotation
     this.tweens.add({
-      targets: wheel,
+      targets: this.entranceWheel,
       angle: 360,
-      duration: 18000,
+      duration: 16000,
+      repeat: -1,
+      ease: 'Linear'
+    });
+  }
+
+  // -------------------------------------------------------------
+  // 3. BOTTOM CONTROL DECK (Fixed overlay, does not scroll with camera)
+  // -------------------------------------------------------------
+  createBottomControlDeck() {
+    this.bottomDeck = this.add.container(0, 0).setScrollFactor(0).setDepth(260);
+
+    // Dark semi-transparent backing along bottom 130px
+    const deckBg = this.add.graphics();
+    deckBg.fillStyle(0x060810, 0.94);
+    deckBg.fillRect(0, 830, GAME_CONFIG.WIDTH, 130);
+
+    // Top border styling
+    deckBg.lineStyle(2, 0x1e293b, 1);
+    deckBg.lineBetween(0, 830, GAME_CONFIG.WIDTH, 830);
+    deckBg.lineStyle(1, 0x38bdf8, 0.35);
+    deckBg.lineBetween(30, 830, GAME_CONFIG.WIDTH - 30, 830);
+
+    // Center: Large circular spin/drop button with a rotating circular arrow icon
+    const centerX = GAME_CONFIG.WIDTH / 2;
+    const centerY = 872;
+
+    this.spinBtnBg = this.add.circle(centerX, centerY, 34, 0x0f172a);
+    this.spinBtnBg.setStrokeStyle(3, 0x38bdf8);
+    this.spinBtnBg.setInteractive({ useHandCursor: true });
+
+    this.spinArrowIcon = this.add.image(centerX, centerY, 'icon_spin_arrow')
+      .setDisplaySize(38, 38)
+      .setInteractive({ useHandCursor: true });
+
+    // Idle slow rotation
+    this.spinIdleTween = this.tweens.add({
+      targets: this.spinArrowIcon,
+      angle: 360,
+      duration: 8000,
       repeat: -1,
       ease: 'Linear'
     });
 
-    this.tweens.add({
-      targets: previewIcon,
-      y: 150,
-      yoyo: true,
-      repeat: -1,
-      duration: 1400,
-      ease: 'Sine.easeInOut'
-    });
+    const triggerSpin = () => {
+      this.onSpinButtonClicked();
+    };
 
-    // Title Banner
-    const title = this.add.text(GAME_CONFIG.WIDTH / 2, 280, 'MINE DROP', {
+    this.spinBtnBg.on('pointerdown', triggerSpin);
+    this.spinArrowIcon.on('pointerdown', triggerSpin);
+
+    // Flanking Bet Adjusters (- / +)
+    const minusBtn = this.add.circle(centerX - 75, centerY, 17, 0x1e293b)
+      .setStrokeStyle(1.5, 0x475569)
+      .setInteractive({ useHandCursor: true });
+    const minusText = this.add.text(centerX - 75, centerY, '-', {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: '30px',
+      fontSize: '15px',
       fontStyle: 'bold',
-      color: '#f59e0b',
-      stroke: '#000000',
-      strokeThickness: 6
+      color: '#ffffff'
     }).setOrigin(0.5);
 
-    const sub = this.add.text(GAME_CONFIG.WIDTH / 2, 330, 'PHYSICS PICKAXE FALL', {
+    minusBtn.on('pointerdown', () => {
+      this.betIndex = Math.max(0, this.betIndex - 1);
+      this.betAmount = this.betSteps[this.betIndex];
+      this.audioManager.playSound('hit_stone');
+      this.updateBottomBarStats();
+      this.tweens.add({ targets: minusBtn, scale: 0.88, yoyo: true, duration: 60 });
+    });
+
+    const plusBtn = this.add.circle(centerX + 75, centerY, 17, 0x1e293b)
+      .setStrokeStyle(1.5, 0x475569)
+      .setInteractive({ useHandCursor: true });
+    const plusText = this.add.text(centerX + 75, centerY, '+', {
       fontFamily: '"Press Start 2P", monospace',
+      fontSize: '15px',
+      fontStyle: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+
+    plusBtn.on('pointerdown', () => {
+      this.betIndex = Math.min(this.betSteps.length - 1, this.betIndex + 1);
+      this.betAmount = this.betSteps[this.betIndex];
+      this.audioManager.playSound('hit_stone');
+      this.updateBottomBarStats();
+      this.tweens.add({ targets: plusBtn, scale: 0.88, yoyo: true, duration: 60 });
+    });
+
+    // Left of Center: Turbo / fast-fall toggle button (double downward arrows >>)
+    // When enabled, multiply game physics speed by 1.5x
+    const turboX = 115;
+    this.turboBtnBg = this.add.circle(turboX, centerY, 22, 0x0f172a)
+      .setStrokeStyle(2, 0x334155)
+      .setInteractive({ useHandCursor: true });
+    this.turboIcon = this.add.image(turboX, centerY, 'icon_turbo')
+      .setDisplaySize(24, 24);
+    this.turboLabel = this.add.text(turboX, centerY - 28, 'TURBO', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '7px',
+      color: '#94a3b8'
+    }).setOrigin(0.5);
+
+    this.turboBtnBg.on('pointerdown', () => {
+      this.isTurbo = !this.isTurbo;
+      // Multiply game physics speed by 1.5x when enabled
+      this.matter.world.engine.timing.timeScale = this.isTurbo ? 1.5 : 1.0;
+      this.audioManager.playSound('hit_stone');
+
+      if (this.isTurbo) {
+        this.turboBtnBg.setFillStyle(0xb45309, 1);
+        this.turboBtnBg.setStrokeStyle(2, 0xf59e0b);
+        this.turboLabel.setColor('#f59e0b');
+        this.turboIcon.setTint(0xfef08a);
+        this.showFloatingToast('TURBO 1.5x ON', '#f59e0b');
+      } else {
+        this.turboBtnBg.setFillStyle(0x0f172a, 1);
+        this.turboBtnBg.setStrokeStyle(2, 0x334155);
+        this.turboLabel.setColor('#94a3b8');
+        this.turboIcon.clearTint();
+        this.showFloatingToast('TURBO OFF', '#94a3b8');
+      }
+    });
+
+    // Settings icon on far left
+    const settingsIcon = this.add.image(48, centerY, 'icon_settings')
+      .setDisplaySize(22, 22)
+      .setInteractive({ useHandCursor: true });
+
+    // Right of Center: Sound toggle (speaker icon)
+    const soundX = 425;
+    this.soundBtnBg = this.add.circle(soundX, centerY, 22, 0x0f172a)
+      .setStrokeStyle(2, 0x334155)
+      .setInteractive({ useHandCursor: true });
+    this.soundIcon = this.add.image(soundX, centerY, 'icon_speaker')
+      .setDisplaySize(22, 22);
+
+    this.soundBtnBg.on('pointerdown', () => {
+      const isMuted = this.audioManager.toggleMute();
+      this.soundIcon.setTexture(isMuted ? 'icon_speaker_mute' : 'icon_speaker');
+      this.soundBtnBg.setStrokeStyle(2, isMuted ? 0xef4444 : 0x334155);
+      this.tweens.add({ targets: this.soundBtnBg, scale: 0.88, yoyo: true, duration: 60 });
+    });
+
+    // Auto-spin circular button on far right
+    const autoSpinBtn = this.add.circle(490, centerY, 18, 0x0f172a)
+      .setStrokeStyle(1.5, 0x334155)
+      .setInteractive({ useHandCursor: true });
+    const autoPlayIcon = this.add.text(490, centerY, '▶', {
       fontSize: '11px',
       color: '#94a3b8'
     }).setOrigin(0.5);
 
-    // Tier Selector Label
-    const selectLabel = this.add.text(GAME_CONFIG.WIDTH / 2, 450, 'SELECT PICKAXE:', {
+    autoSpinBtn.on('pointerdown', () => {
+      this.showFloatingToast('AUTO-SPIN READY', '#38bdf8');
+    });
+
+    // Bonus Buy Badge (Floating above control deck on right)
+    const bonusBg = this.add.rectangle(465, 742, 94, 40, 0x090b14)
+      .setStrokeStyle(2.5, 0xeab308)
+      .setInteractive({ useHandCursor: true });
+    const bonusText1 = this.add.text(465, 733, 'BONUS', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '8px',
+      fontStyle: 'bold',
+      color: '#ffffff'
+    }).setOrigin(0.5);
+    const bonusText2 = this.add.text(465, 749, 'BUY', {
       fontFamily: '"Press Start 2P", monospace',
       fontSize: '11px',
       fontStyle: 'bold',
-      color: '#ffffff'
+      color: '#facc15'
     }).setOrigin(0.5);
 
-    // Tier Selector Buttons
-    const tierButtons = [];
-    const buttonWidth = 110;
-    const startX = (GAME_CONFIG.WIDTH - (4 * buttonWidth + 3 * 10)) / 2 + buttonWidth / 2;
-
-    TIER_ORDER.forEach((tId, idx) => {
-      const data = getTierData(tId);
-      const bx = startX + idx * (buttonWidth + 10);
-      const by = 510;
-
-      const btnBg = this.add.rectangle(bx, by, buttonWidth, 60, idx === 0 ? 0x2563eb : 0x1e293b)
-        .setInteractive({ useHandCursor: true });
-      btnBg.setStrokeStyle(2, idx === 0 ? 0x60a5fa : 0x475569);
-
-      const btnLabel = this.add.text(bx, by - 8, data.name.split(' ')[0].toUpperCase(), {
-        fontFamily: '"Press Start 2P", monospace',
-        fontSize: '10px',
-        fontStyle: 'bold',
-        color: '#ffffff'
-      }).setOrigin(0.5);
-
-      const hpLabel = this.add.text(bx, by + 12, `${data.durability} HP`, {
-        fontFamily: '"Press Start 2P", monospace',
-        fontSize: '9px',
-        color: '#94a3b8'
-      }).setOrigin(0.5);
-
-      btnBg.on('pointerdown', (pointer) => {
-        pointer.event.stopPropagation();
-        this.selectedTier = tId;
-        this.spawnPickaxe(tId);
-        this.updateHudStats();
-        previewIcon.setTexture(data.texture);
-
-        // Update button highlights
-        tierButtons.forEach((b, i) => {
-          const isSelected = i === idx;
-          b.bg.setFillStyle(isSelected ? 0x2563eb : 0x1e293b);
-          b.bg.setStrokeStyle(2, isSelected ? 0x60a5fa : 0x475569);
-        });
-      });
-
-      tierButtons.push({ bg: btnBg, label: btnLabel, hp: hpLabel });
-      this.startOverlay.add([btnBg, btnLabel, hpLabel]);
+    bonusBg.on('pointerdown', () => {
+      this.onBonusBuyClicked();
     });
 
-    // Big Pulse "TAP TO DROP" Button
-    const dropBtn = this.add.rectangle(GAME_CONFIG.WIDTH / 2, 650, 260, 68, 0x16a34a)
-      .setInteractive({ useHandCursor: true });
-    dropBtn.setStrokeStyle(3, 0x4ade80);
+    // Bottom text bar: Display "CASH: [value]" and "WIN: [value]" with arcade monospaced numbers
+    const barStripe = this.add.graphics();
+    barStripe.fillStyle(0x020408, 0.94);
+    barStripe.fillRect(0, 922, GAME_CONFIG.WIDTH, 38);
+    barStripe.lineStyle(1, 0x1e293b, 0.8);
+    barStripe.lineBetween(0, 922, GAME_CONFIG.WIDTH, 922);
 
-    const dropText = this.add.text(GAME_CONFIG.WIDTH / 2, 650, 'TAP TO DROP', {
+    // Left: CASH
+    const cashLabel = this.add.text(18, 930, 'CASH (DMO)', {
       fontFamily: '"Press Start 2P", monospace',
-      fontSize: '16px',
+      fontSize: '7px',
+      color: '#94a3b8'
+    });
+    this.cashText = this.add.text(18, 944, '40,000.00', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '10px',
       fontStyle: 'bold',
       color: '#ffffff'
-    }).setOrigin(0.5);
+    });
 
-    // Pulse animation
+    // Center: WIN
+    const winLabel = this.add.text(centerX, 930, 'WIN', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '7px',
+      color: '#94a3b8'
+    }).setOrigin(0.5, 0);
+    this.winText = this.add.text(centerX, 944, '0.00', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: '#4ade80'
+    }).setOrigin(0.5, 0);
+
+    // Right: BET
+    const betLabel = this.add.text(GAME_CONFIG.WIDTH - 18, 930, 'BET', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '7px',
+      color: '#94a3b8'
+    }).setOrigin(1, 0);
+    this.betText = this.add.text(GAME_CONFIG.WIDTH - 18, 944, '5,000.00', {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '10px',
+      fontStyle: 'bold',
+      color: '#fef08a'
+    }).setOrigin(1, 0);
+
+    this.bottomDeck.add([
+      deckBg,
+      this.spinBtnBg, this.spinArrowIcon,
+      minusBtn, minusText, plusBtn, plusText,
+      this.turboBtnBg, this.turboIcon, this.turboLabel,
+      settingsIcon,
+      this.soundBtnBg, this.soundIcon,
+      autoSpinBtn, autoPlayIcon,
+      bonusBg, bonusText1, bonusText2,
+      barStripe,
+      cashLabel, this.cashText,
+      winLabel, this.winText,
+      betLabel, this.betText
+    ]);
+
+    this.updateBottomBarStats();
+  }
+
+  onSpinButtonClicked() {
+    this.audioManager.unlockAudio();
+    this.audioManager.playSound('swing');
+
+    // Button squash animation
     this.tweens.add({
-      targets: [dropBtn, dropText],
-      scale: 1.05,
+      targets: [this.spinBtnBg, this.spinArrowIcon],
+      scale: 0.90,
       yoyo: true,
-      repeat: -1,
-      duration: 600,
-      ease: 'Sine.easeInOut'
+      duration: 80,
+      ease: 'Quad.easeInOut'
     });
 
-    dropBtn.on('pointerdown', () => {
+    this.spinArrowIcon.angle += 180;
+
+    if (this.gameState === 'READY') {
       this.startRun();
-    });
+    } else if (this.gameState === 'DROPPING') {
+      if (this.pickaxe && !this.pickaxe.isDead) {
+        this.pickaxe.nudge();
+      }
+    } else if (this.gameState === 'GAME_OVER') {
+      this.restartGame();
+    }
+  }
 
-    shade.setInteractive();
-    shade.on('pointerdown', () => {
-      this.startRun();
-    });
+  onBonusBuyClicked() {
+    this.audioManager.playSound('upgrade_fanfare');
+    this.particleManager.emitUpgradeBlast(GAME_CONFIG.WIDTH / 2, 742);
+    if (this.pickaxe && !this.pickaxe.isDead) {
+      this.pickaxe.upgradeTier();
+      this.showFloatingToast('BONUS UPGRADE!', '#facc15');
+    }
+  }
 
-    this.startOverlay.add([wheel, previewIcon, title, sub, selectLabel, dropBtn, dropText]);
+  showFloatingToast(text, color = '#ffffff') {
+    const toast = this.add.text(GAME_CONFIG.WIDTH / 2, 800, text, {
+      fontFamily: '"Press Start 2P", monospace',
+      fontSize: '11px',
+      fontStyle: 'bold',
+      color: color,
+      stroke: '#000000',
+      strokeThickness: 3
+    }).setOrigin(0.5).setScrollFactor(0).setDepth(280);
+
+    this.tweens.add({
+      targets: toast,
+      y: 765,
+      alpha: 0,
+      duration: 700,
+      ease: 'Cubic.easeOut',
+      onComplete: () => {
+        toast.destroy();
+      }
+    });
+  }
+
+  addWin(amount) {
+    this.winAmount += amount;
+    this.cashAmount += amount;
+    this.updateBottomBarStats(true);
+  }
+
+  updateBottomBarStats(pulseWin = false) {
+    if (this.cashText) {
+      this.cashText.setText(this.cashAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    }
+    if (this.winText) {
+      this.winText.setText(this.winAmount.toFixed(2));
+      if (pulseWin) {
+        this.winText.setScale(1.25);
+        this.winText.setColor('#86efac');
+        this.tweens.add({
+          targets: this.winText,
+          scale: 1.0,
+          duration: 180,
+          ease: 'Quad.easeOut',
+          onComplete: () => {
+            if (this.winText) this.winText.setColor('#4ade80');
+          }
+        });
+      }
+    }
+    if (this.betText) {
+      this.betText.setText(this.betAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    }
+  }
+
+  updateHudStats() {
+    this.updateBottomBarStats();
   }
 
   startRun() {
     if (this.gameState !== 'READY') return;
 
-    // Safely unlock Web Audio for mobile browsers
     this.audioManager.unlockAudio();
     this.audioManager.playSound('swing');
 
     this.gameState = 'DROPPING';
-    if (this.hudContainer) {
-      this.hudContainer.setVisible(true);
-      this.updateHudStats();
+
+    // Reset round win amount
+    this.winAmount = 0.00;
+    this.cashAmount = Math.max(0, this.cashAmount - this.betAmount);
+    this.updateBottomBarStats();
+
+    // Unfreeze pickaxe body and launch downwards
+    if (this.pickaxe && this.pickaxe.body) {
+      Phaser.Physics.Matter.Matter.Body.setStatic(this.pickaxe.body, false);
+      this.pickaxe.launch();
     }
 
-    // Fade out start overlay
-    this.tweens.add({
-      targets: this.startOverlay,
-      alpha: 0,
-      duration: 250,
-      onComplete: () => {
-        this.startOverlay.destroy();
-        this.pickaxe.launch();
-      }
+    // Spin entrance wheel vigorously
+    if (this.entranceWheel) {
+      this.tweens.add({
+        targets: this.entranceWheel,
+        angle: this.entranceWheel.angle + 720,
+        duration: 450,
+        ease: 'Cubic.easeOut'
+      });
+    }
+
+    if (this.spinBtnBg) {
+      this.spinBtnBg.setStrokeStyle(3, 0x22c55e);
+    }
+  }
+
+  restartGame() {
+    this.cameras.main.fadeOut(200, 0, 0, 0);
+    this.cameras.main.once('camerafadeoutcomplete', () => {
+      this.scene.restart();
     });
   }
 
@@ -609,7 +795,7 @@ export class GameScene extends Phaser.Scene {
     const stats = [
       { label: 'DEPTH REACHED', val: `${this.depthMeters} m`, col: '#38bdf8' },
       { label: 'BLOCKS MINED', val: `${blocksVal}`, col: '#f59e0b' },
-      { label: 'FINAL SCORE', val: `${scoreVal}`, col: '#fef08a' }
+      { label: 'ROUND WIN', val: `$${this.winAmount.toFixed(2)}`, col: '#4ade80' }
     ];
 
     stats.forEach((st, idx) => {
@@ -641,10 +827,7 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     retryBtn.on('pointerdown', () => {
-      this.cameras.main.fadeOut(250, 0, 0, 0);
-      this.cameras.main.once('camerafadeoutcomplete', () => {
-        this.scene.restart();
-      });
+      this.restartGame();
     });
 
     modal.add([dark, panel, skull, title, sub, retryBtn, retryText]);
