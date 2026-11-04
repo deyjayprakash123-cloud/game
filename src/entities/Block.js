@@ -14,7 +14,8 @@ export class Block extends Phaser.Physics.Matter.Image {
       isSensor: !isBedrock, // Non-bedrock mine blocks are sensors so pickaxe penetrates smoothly!
       label: 'block',
       friction: 0.1,
-      restitution: blockType.specialEffect === 'bounce' ? 1.8 : 0.0
+      restitution: blockType.specialEffect === 'bounce' ? 1.8 : 0.0,
+      slop: 0.05
     });
 
     this.scene = scene;
@@ -25,8 +26,11 @@ export class Block extends Phaser.Physics.Matter.Image {
     this.hp = blockType.maxHp;
     this.isDestroyed = false;
 
-    // Attach reference on Matter body for collision callback lookups
+    // Attach reference and set CCD properties
     this.body.gameObject = this;
+    this.body.slop = 0.05;
+    this.body.collisionFilter.category = 0x0002;
+    this.body.collisionFilter.mask = 0xFFFFFFFF;
 
     // Visual crack overlay graphic (lazy added on damage)
     this.crackGraphic = null;

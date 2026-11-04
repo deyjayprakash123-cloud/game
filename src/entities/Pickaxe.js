@@ -71,7 +71,8 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       chamfer: { radius: 3 },
       density: tierData.density * 0.5,
       friction: tierData.friction,
-      restitution: tierData.restitution
+      restitution: tierData.restitution,
+      slop: 0.05
     });
 
     // 2. Head Part: angled cross bar blade (heavy metal/stone density)
@@ -83,7 +84,8 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       chamfer: { radius: 4 },
       density: tierData.density * 2.2, // Head is 4.4x denser than handle
       friction: tierData.friction,
-      restitution: tierData.restitution
+      restitution: tierData.restitution,
+      slop: 0.05
     });
 
     // 3. Blade tips (pointed contact nodes at visible tips of 128x128 sprite)
@@ -92,7 +94,8 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
     const tip1Y = (18 - originY) * k;
     const tip1 = Bodies.circle(tip1X, tip1Y, 4, {
       density: tierData.density * 1.5,
-      restitution: tierData.restitution * 1.1
+      restitution: tierData.restitution * 1.1,
+      slop: 0.05
     });
 
     // Lower-right tip in 128x128 sprite is at (112, 74)
@@ -100,17 +103,29 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
     const tip2Y = (74 - originY) * k;
     const tip2 = Bodies.circle(tip2X, tip2Y, 4, {
       density: tierData.density * 1.5,
-      restitution: tierData.restitution * 1.1
+      restitution: tierData.restitution * 1.1,
+      slop: 0.05
     });
 
-    // Combine into rigid compound body
+    // Combine into rigid compound body with CCD & slop safeguards
     const compound = Body.create({
       parts: [shaft, head, tip1, tip2],
       label: 'pickaxe',
       restitution: tierData.restitution,
       friction: tierData.friction,
       frictionAir: tierData.frictionAir,
-      frictionStatic: 0.04
+      frictionStatic: 0.04,
+      slop: 0.05
+    });
+
+    // Explicitly set collision filter category and slop on compound and all subparts
+    compound.slop = 0.05;
+    compound.collisionFilter.category = 0x0001;
+    compound.collisionFilter.mask = 0xFFFFFFFF;
+    [shaft, head, tip1, tip2].forEach(p => {
+      p.slop = 0.05;
+      p.collisionFilter.category = 0x0001;
+      p.collisionFilter.mask = 0xFFFFFFFF;
     });
 
     this.setExistingBody(compound);
@@ -142,14 +157,11 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
   }
 
   createFloatingStatus() {
-    this.statusContainer = this.scene.add.container(this.x, this.y - 44).setDepth(150);
+    this.statusContainer = this.scene.add.container(Math.round(this.x), Math.round(this.y - 44)).setDepth(150);
 
-    // Pill background
-    this.statusPill = this.scene.add.graphics();
-    this.statusPill.fillStyle(0x090b14, 0.88);
-    this.statusPill.fillRoundedRect(-58, -13, 116, 26, 6);
-    this.statusPill.lineStyle(1.5, 0x334155, 1);
-    this.statusPill.strokeRoundedRect(-58, -13, 116, 26, 6);
+    // High-performance pill background (pure WebGL rectangle, no canvas context re-allocation)
+    this.statusPill = this.scene.add.rectangle(0, 0, 116, 26, 0x090b14, 0.88)
+      .setStrokeStyle(1.5, 0x334155);
 
     // Dynamic Floating Health Text: "❤️ [current]/[max]" (e.g., "❤️ 147/150")
     this.durabilityText = this.scene.add.text(0, 0, `❤️ ${this.durability}/${this.maxDurability}`, {
@@ -165,9 +177,9 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
   update(time, delta) {
     if (this.isDead) return;
 
-    // Smoothly track the pickaxe position every frame
+    // Smoothly track pickaxe position rounded to whole pixels (eliminates sub-pixel jitter/ghosting)
     if (this.statusContainer) {
-      this.statusContainer.setPosition(this.x, this.y - 44);
+      this.statusContainer.setPosition(Math.round(this.x), Math.round(this.y - 44));
     }
 
     const body = this.body;
@@ -192,18 +204,12 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       this.setAngularVelocity(Math.sign(body.angularVelocity) * maxSpin);
     }
 
-    // Clamp maximum terminal velocity
-    const maxVy = 18.0;
+    // -------------------------------------------------------------
+    // 2. CAP MAXIMUM TERMINAL VELOCITY (Strictly 8 to 10 to eliminate tunneling)
+    // -------------------------------------------------------------
+    const maxVy = GAME_CONFIG.PHYSICS.MAX_TERMINAL_VELOCITY || 9.0;
     if (vy > maxVy) {
       Phaser.Physics.Matter.Matter.Body.setVelocity(body, { x: vx, y: maxVy });
-    }
-
-    // -------------------------------------------------------------
-    // 2. GRAVITY BOOST: If barely moving downward, give extra push
-    // This prevents the pickaxe from floating / hovering between rows
-    // -------------------------------------------------------------
-    if (vy < 2.0 && vy >= 0) {
-      Phaser.Physics.Matter.Matter.Body.applyForce(body, body.position, { x: 0, y: 0.025 });
     }
 
     // -------------------------------------------------------------
@@ -296,8 +302,10 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
     let newVy = Math.max(0, curVy) * damping;
 
     // Minimum plow speed — pickaxe never stalls through clusters
-    const minDown = GAME_CONFIG.PHYSICS.MIN_PLOW_SPEED || 5.0;
+    const minDown = GAME_CONFIG.PHYSICS.MIN_PLOW_SPEED || 4.2;
+    const maxVy = GAME_CONFIG.PHYSICS.MAX_TERMINAL_VELOCITY || 9.0;
     if (newVy < minDown) newVy = minDown;
+    if (newVy > maxVy) newVy = maxVy; // Strictly cap velocity to prevent tunneling
 
     // Horizontal deflection based on contact side
     const dx = this.x - block.x;
@@ -364,16 +372,13 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
     this.durability = Math.max(0, this.durability - amount);
     this.updateStatusText();
 
-    // Pulse & Flash Red briefly whenever durability is deducted
+    // Pulse & Flash Red briefly whenever durability is deducted (using instant WebGL styles)
     if (this.statusContainer && this.durabilityText) {
       this.durabilityText.setColor('#ef4444');
 
       if (this.statusPill) {
-        this.statusPill.clear();
-        this.statusPill.fillStyle(0x7f1d1d, 0.95); // Deep crimson flash
-        this.statusPill.fillRoundedRect(-58, -13, 116, 26, 6);
-        this.statusPill.lineStyle(1.5, 0xef4444, 1);
-        this.statusPill.strokeRoundedRect(-58, -13, 116, 26, 6);
+        this.statusPill.setFillStyle(0x7f1d1d, 0.95); // Deep crimson flash
+        this.statusPill.setStrokeStyle(1.5, 0xef4444);
       }
 
       if (this.pulseTween) {
@@ -382,18 +387,15 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       this.statusContainer.setScale(1.0);
       this.pulseTween = this.scene.tweens.add({
         targets: this.statusContainer,
-        scale: 1.25,
+        scale: 1.15,
         duration: 70,
         yoyo: true,
         ease: 'Quad.easeOut',
         onComplete: () => {
           this.pulseTween = null;
           if (this.statusPill && !this.isDead) {
-            this.statusPill.clear();
-            this.statusPill.fillStyle(0x090b14, 0.88);
-            this.statusPill.fillRoundedRect(-58, -13, 116, 26, 6);
-            this.statusPill.lineStyle(1.5, 0x334155, 1);
-            this.statusPill.strokeRoundedRect(-58, -13, 116, 26, 6);
+            this.statusPill.setFillStyle(0x090b14, 0.88);
+            this.statusPill.setStrokeStyle(1.5, 0x334155);
           }
           this.updateStatusText();
         }

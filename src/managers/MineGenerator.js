@@ -29,9 +29,16 @@ export class MineGenerator {
    * Initializes the shaft entrance and initial block rows
    */
   initShaft() {
+    // Clean up any remaining block sprites and physics bodies
+    for (const block of this.blocks.values()) {
+      if (block.body) {
+        this.scene.matter.world.remove(block.body);
+      }
+      block.destroy();
+    }
+    this.blocks.clear();
     this.highestRowGenerated = 0;
     this.lowestRowCulled = 0;
-    this.blocks.clear();
     this.nextFormationRow = 8;
 
     // Preload top chamber + 15 rows ahead

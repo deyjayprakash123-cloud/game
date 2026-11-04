@@ -17,6 +17,8 @@ const config = {
   roundPixels: true,
   backgroundColor: '#0c0a14',
 
+  clearBeforeRender: true,
+
   scale: {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
@@ -29,8 +31,14 @@ const config = {
     matter: {
       gravity: {
         x: 0,
-        y: GAME_CONFIG.PHYSICS.GRAVITY_Y
+        y: 0.8
       },
+      runner: {
+        isFixed: true,
+        fps: 60
+      },
+      positionIterations: 6,
+      velocityIterations: 4,
       debug: false,
       enableSleeping: false
     }

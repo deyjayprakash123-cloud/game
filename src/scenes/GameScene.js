@@ -132,6 +132,16 @@ export class GameScene extends Phaser.Scene {
           y: minPlow
         });
       }
+
+      // Strictly cap maximum downward velocity to 9.0 to eliminate tunneling
+      const maxVy = GAME_CONFIG.PHYSICS.MAX_TERMINAL_VELOCITY || 9.0;
+      if (body.velocity.y > maxVy) {
+        Phaser.Physics.Matter.Matter.Body.setVelocity(body, {
+          x: body.velocity.x,
+          y: maxVy
+        });
+      }
+
       // Reset boost flag each frame; onHitBlock sets it again if needed
       this.pickaxe._needsPlowBoost = false;
     });
@@ -206,8 +216,8 @@ export class GameScene extends Phaser.Scene {
         GAME_CONFIG.RULES.CAMERA_LERP_Y
       );
 
-      // Parallax scroll background
-      this.bg.tilePositionY = this.cameras.main.scrollY * 0.25;
+      // Parallax scroll background (pixel rounded to prevent sub-pixel shimmer/ghosting)
+      this.bg.tilePositionY = Math.round(this.cameras.main.scrollY * 0.25);
 
       // Extend mine shaft procedurally ahead of camera
       this.mineGenerator.updateGeneration(this.cameras.main.scrollY);
@@ -217,7 +227,6 @@ export class GameScene extends Phaser.Scene {
       if (curDepth > this.depthMeters) {
         this.depthMeters = curDepth;
       }
-      this.updateHudStats();
     }
   }
 
@@ -671,10 +680,16 @@ export class GameScene extends Phaser.Scene {
 
   updateBottomBarStats(pulseWin = false) {
     if (this.cashText) {
-      this.cashText.setText(this.cashAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      const cashStr = this.cashAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      if (this.cashText.text !== cashStr) {
+        this.cashText.setText(cashStr);
+      }
     }
     if (this.winText) {
-      this.winText.setText(this.winAmount.toFixed(2));
+      const winStr = this.winAmount.toFixed(2);
+      if (this.winText.text !== winStr) {
+        this.winText.setText(winStr);
+      }
       if (pulseWin) {
         this.winText.setScale(1.25);
         this.winText.setColor('#86efac');
@@ -690,7 +705,10 @@ export class GameScene extends Phaser.Scene {
       }
     }
     if (this.betText) {
-      this.betText.setText(this.betAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+      const betStr = this.betAmount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      if (this.betText.text !== betStr) {
+        this.betText.setText(betStr);
+      }
     }
   }
 
