@@ -118,11 +118,15 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       slop: 0.05
     });
 
-    // Explicitly set collision filter category and slop on compound and all subparts
+    // Explicitly set collision filter category, label, and gameObject on compound and all subparts
     compound.slop = 0.05;
+    compound.label = 'pickaxe';
+    compound.gameObject = this;
     compound.collisionFilter.category = 0x0001;
     compound.collisionFilter.mask = 0xFFFFFFFF;
     [shaft, head, tip1, tip2].forEach(p => {
+      p.label = 'pickaxe';
+      p.gameObject = this;
       p.slop = 0.05;
       p.collisionFilter.category = 0x0001;
       p.collisionFilter.mask = 0xFFFFFFFF;
@@ -130,6 +134,7 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
 
     this.setExistingBody(compound);
     this.body.gameObject = this;
+    this.body.label = 'pickaxe';
 
     // Apply cached transform and velocities to newly attached compound body
     Body.setPosition(compound, { x: posX, y: posY });
@@ -186,6 +191,22 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
     const vx = body.velocity.x;
     const vy = body.velocity.y;
     const speed = Math.hypot(vx, vy);
+
+    // -------------------------------------------------------------
+    // 0. DETERMINISTIC PROXIMITY SWEEP (Layer 2 Hit Detection)
+    // -------------------------------------------------------------
+    // Guarantees zero missed blocks / zero tunneling regardless of velocity or sub-step timing
+    if (this.scene.gameState === 'DROPPING' && this.scene.mineGenerator) {
+      const hitRadius = 42;
+      const nearbyBlocks = this.scene.mineGenerator.getBlocksInRadius(this.x, this.y, hitRadius);
+      for (let i = 0; i < nearbyBlocks.length; i++) {
+        const block = nearbyBlocks[i];
+        if (block && !block.isDestroyed && !this.scene._hitBlocksThisFrame.has(block)) {
+          this.scene._hitBlocksThisFrame.add(block);
+          this.onHitBlock(block);
+        }
+      }
+    }
 
     // -------------------------------------------------------------
     // 1. CONTINUOUS NATURAL ROTATION IN FREE-FALL

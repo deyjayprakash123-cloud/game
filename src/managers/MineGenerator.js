@@ -373,7 +373,9 @@ export class MineGenerator {
     for (const block of this.blocks.values()) {
       if (block.isDestroyed || block.blockType.isIndestructible) continue;
       const dx = block.x - worldX;
+      if (Math.abs(dx) > radius) continue;
       const dy = block.y - worldY;
+      if (Math.abs(dy) > radius) continue;
       if (dx * dx + dy * dy <= radiusSq) {
         targets.push(block);
       }

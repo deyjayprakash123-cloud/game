@@ -101,9 +101,11 @@ export class GameScene extends Phaser.Scene {
       tierId
     );
 
-    // Freeze in place inside the wheel during READY state
+    // Hold in place inside the wheel during READY state without setting static
     if (this.gameState === 'READY' && this.pickaxe.body) {
-      Phaser.Physics.Matter.Matter.Body.setStatic(this.pickaxe.body, true);
+      this.pickaxe.setIgnoreGravity(true);
+      this.pickaxe.setVelocity(0, 0);
+      this.pickaxe.setAngularVelocity(0);
     }
   }
 
@@ -158,21 +160,21 @@ export class GameScene extends Phaser.Scene {
         const rootA = bodyA.parent || bodyA;
         const rootB = bodyB.parent || bodyB;
 
-        const isPickaxeA = rootA.label === 'pickaxe';
-        const isPickaxeB = rootB.label === 'pickaxe';
-        const isBlockA   = rootA.label === 'block';
-        const isBlockB   = rootB.label === 'block';
+        const isPickaxeA = rootA.label === 'pickaxe' || bodyA.label === 'pickaxe';
+        const isPickaxeB = rootB.label === 'pickaxe' || bodyB.label === 'pickaxe';
+        const isBlockA   = rootA.label === 'block' || bodyA.label === 'block';
+        const isBlockB   = rootB.label === 'block' || bodyB.label === 'block';
 
         if (isPickaxeA && isBlockB) {
-          const pickaxe = rootA.gameObject;
-          const block   = rootB.gameObject;
+          const pickaxe = this.pickaxe;
+          const block   = rootB.gameObject || bodyB.gameObject;
           if (!block || this._hitBlocksThisFrame.has(block)) continue;
           this._hitBlocksThisFrame.add(block);
           const normal = pair.collision ? pair.collision.normal : null;
           this.processPickaxeBlockCollision(pickaxe, block, rootA, rootB, normal);
         } else if (isPickaxeB && isBlockA) {
-          const pickaxe = rootB.gameObject;
-          const block   = rootA.gameObject;
+          const pickaxe = this.pickaxe;
+          const block   = rootA.gameObject || bodyA.gameObject;
           if (!block || this._hitBlocksThisFrame.has(block)) continue;
           this._hitBlocksThisFrame.add(block);
           const normal = pair.collision ? { x: -pair.collision.normal.x, y: -pair.collision.normal.y } : null;
@@ -185,8 +187,9 @@ export class GameScene extends Phaser.Scene {
   processPickaxeBlockCollision(pickaxe, block, bodyPickaxe, bodyBlock, normal) {
     if (!pickaxe || !block || pickaxe.isDead || block.isDestroyed) return;
 
-    const vx = bodyPickaxe.velocity.x;
-    const vy = bodyPickaxe.velocity.y;
+    const body = pickaxe.body || bodyPickaxe;
+    const vx = body.velocity ? body.velocity.x : 0;
+    const vy = body.velocity ? body.velocity.y : 0;
     const impactSpeed = Math.hypot(vx, vy);
 
     pickaxe.onHitBlock(block, impactSpeed, normal);
@@ -205,6 +208,13 @@ export class GameScene extends Phaser.Scene {
   }
 
   update(time, delta) {
+    if (this.gameState === 'READY' && this.pickaxe) {
+      this.pickaxe.setPosition(GAME_CONFIG.PHYSICS.PICKAXE_SPAWN_X, 175);
+      this.pickaxe.setVelocity(0, 0);
+      this.pickaxe.setAngularVelocity(0);
+      return;
+    }
+
     if (this.gameState === 'DROPPING' && this.pickaxe && !this.pickaxe.isDead) {
       this.pickaxe.update(time, delta);
 
@@ -729,9 +739,9 @@ export class GameScene extends Phaser.Scene {
     this.cashAmount = Math.max(0, this.cashAmount - this.betAmount);
     this.updateBottomBarStats();
 
-    // Unfreeze pickaxe body and launch downwards
+    // Release pickaxe gravity and launch downwards
     if (this.pickaxe && this.pickaxe.body) {
-      Phaser.Physics.Matter.Matter.Body.setStatic(this.pickaxe.body, false);
+      this.pickaxe.setIgnoreGravity(false);
       this.pickaxe.launch();
     }
 
