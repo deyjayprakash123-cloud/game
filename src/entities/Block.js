@@ -7,11 +7,14 @@ import { GAME_CONFIG } from '../config/gameConfig.js';
  */
 export class Block extends Phaser.Physics.Matter.Image {
   constructor(scene, x, y, blockType, gridX, gridY) {
+    const isBedrock = blockType.isIndestructible;
+
     super(scene.matter.world, x, y, blockType.texture, null, {
       isStatic: true,
+      isSensor: !isBedrock, // Non-bedrock mine blocks are sensors so pickaxe penetrates smoothly!
       label: 'block',
-      friction: 0.3,
-      restitution: blockType.specialEffect === 'bounce' ? 1.8 : 0.2
+      friction: 0.1,
+      restitution: blockType.specialEffect === 'bounce' ? 1.8 : 0.0
     });
 
     this.scene = scene;
@@ -39,7 +42,7 @@ export class Block extends Phaser.Physics.Matter.Image {
   }
 
   /**
-   * Inflict damage on this block from a pickaxe impact
+   * Inflict damage on this block from a pickaxe impact or TNT blast
    */
   takeDamage(damageAmount) {
     if (this.isDestroyed) return { destroyed: false, score: 0 };
@@ -53,29 +56,8 @@ export class Block extends Phaser.Physics.Matter.Image {
       return { destroyed: false, score: 0 };
     }
 
-    this.hp -= damageAmount;
-
-    // Block Hits: Emit 4–6 small debris pixel particles colored to match the block type
-    this.scene.particleManager.emitBlockHit(this.x, this.y, this.blockType.particleColor);
-
-    // Ore Hits: Emit small glistening gold/diamond sparkle particles
-    const isOre = this.blockType.id.includes('ore');
-    if (isOre) {
-      this.scene.particleManager.emitOreSparkles(this.x, this.y, this.blockType.particleColor, 6);
-    }
-
-    this.scene.audioManager.playSound(this.blockType.hitSound || 'hit_stone');
-
-    // Visual crack progression
-    this.updateDamageVisual();
-
-    if (this.hp <= 0) {
-      return this.breakBlock(true);
-    } else {
-      // Floating damage number
-      this.scene.showFloatingText(this.x, this.y - 15, `-${Math.round(damageAmount)}`, '#fde047', 12);
-      return { destroyed: false, score: 0 };
-    }
+    // Instantly break block upon contact/damage
+    return this.breakBlock(true);
   }
 
   /**

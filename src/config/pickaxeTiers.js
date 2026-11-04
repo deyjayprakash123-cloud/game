@@ -7,7 +7,7 @@ export const PICKAXE_TIERS = {
   WOOD: {
     id: 'wood',
     name: 'Wooden Pickaxe',
-    durability: 50,
+    durability: 80,
     collisionDamage: 15,
     size: 48,
     mass: 1.0,
@@ -27,7 +27,7 @@ export const PICKAXE_TIERS = {
   STONE: {
     id: 'stone',
     name: 'Stone Pickaxe',
-    durability: 90,
+    durability: 160,
     collisionDamage: 25,
     size: 52,
     mass: 1.35,
@@ -47,7 +47,7 @@ export const PICKAXE_TIERS = {
   IRON: {
     id: 'iron',
     name: 'Iron Pickaxe',
-    durability: 160,
+    durability: 260,
     collisionDamage: 45,
     size: 56,
     mass: 1.8,
@@ -67,7 +67,7 @@ export const PICKAXE_TIERS = {
   DIAMOND: {
     id: 'diamond',
     name: 'Diamond Pickaxe',
-    durability: 260,
+    durability: 400,
     collisionDamage: 80,
     size: 60,
     mass: 2.3,

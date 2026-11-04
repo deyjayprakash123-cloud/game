@@ -142,35 +142,32 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
   }
 
   createFloatingStatus() {
-    this.statusContainer = this.scene.add.container(this.x, this.y - 45);
+    this.statusContainer = this.scene.add.container(this.x, this.y - 44).setDepth(150);
 
-    // Mini background pill
-    const pill = this.scene.add.graphics();
-    pill.fillStyle(0x0f172a, 0.75);
-    pill.fillRoundedRect(-38, -12, 76, 24, 6);
-    pill.lineStyle(1.5, 0x334155, 1);
-    pill.strokeRoundedRect(-38, -12, 76, 24, 6);
+    // Pill background
+    this.statusPill = this.scene.add.graphics();
+    this.statusPill.fillStyle(0x090b14, 0.88);
+    this.statusPill.fillRoundedRect(-58, -13, 116, 26, 6);
+    this.statusPill.lineStyle(1.5, 0x334155, 1);
+    this.statusPill.strokeRoundedRect(-58, -13, 116, 26, 6);
 
-    // Heart icon
-    const heart = this.scene.add.image(-24, 0, 'ui_heart').setDisplaySize(16, 16);
-
-    // Durability text
-    this.durabilityText = this.scene.add.text(4, 0, `${this.durability}`, {
+    // Dynamic Floating Health Text: "❤️ [current]/[max]" (e.g., "❤️ 147/150")
+    this.durabilityText = this.scene.add.text(0, 0, `❤️ ${this.durability}/${this.maxDurability}`, {
       fontFamily: '"Press Start 2P", monospace',
       fontSize: '9px',
       fontStyle: 'bold',
       color: '#ffffff'
     }).setOrigin(0.5);
 
-    this.statusContainer.add([pill, heart, this.durabilityText]);
+    this.statusContainer.add([this.statusPill, this.durabilityText]);
   }
 
   update(time, delta) {
     if (this.isDead) return;
 
-    // Keep floating durability tracker smoothly aligned above pickaxe
+    // Smoothly track the pickaxe position every frame
     if (this.statusContainer) {
-      this.statusContainer.setPosition(this.x, this.y - 40);
+      this.statusContainer.setPosition(this.x, this.y - 44);
     }
 
     const vx = this.body.velocity.x;
@@ -203,7 +200,7 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
     }
 
     // -------------------------------------------------------------
-    // 2. ANTI-STUCK MECHANIC
+    // 2. ANTI-STUCK WATCHDOG
     // -------------------------------------------------------------
     // If linear velocity drops below threshold for > 1.5 seconds, kick free
     if (speed < GAME_CONFIG.RULES.STUCK_SPEED_THRESHOLD) {
@@ -218,81 +215,81 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
   }
 
   /**
-   * Refined Collision Impact with Linear <-> Angular momentum transfer,
-   * Glancing deflections, and randomized micro-impulses (±5-10%).
+   * Exact Hit & Penetration System
+   * Cuts through and penetrates blocks without stopping downward velocity.
+   * Damps vertical velocity slightly (8-15%), adds horizontal deflection,
+   * maintains minimum downward fall speed, and deducts durability per block.
    */
   onHitBlock(block, impactSpeed, normal) {
     if (this.isDead || block.isDestroyed) return;
 
-    // Reset stuck timer on solid impact
     this.stuckTimer = 0;
 
-    // Calculate damage based on pickaxe tier and impact speed
-    const baseDamage = this.tierData.collisionDamage;
-    const speedMultiplier = Math.min(2.2, Math.max(0.85, impactSpeed / 4.8));
-    const damageDealt = baseDamage * speedMultiplier;
-
-    // Apply block damage
-    const result = block.takeDamage(damageDealt);
-    if (result.destroyed) {
-      this.blocksMined++;
-      this.totalScore += result.score;
+    // 1. Bedrock Deflection (Border Walls Col 0 & Col 8)
+    if (block.blockType.isIndestructible) {
+      const dx = this.x - block.x;
+      const sideSign = dx >= 0 ? 1 : -1;
+      this.setVelocityX(sideSign * 4.2);
+      if (this.body.velocity.y < 3.2) {
+        this.setVelocityY(3.2);
+      }
+      this.scene.particleManager.emitSparks(this.x, this.y, 0x6b21a8, 6);
+      this.scene.audioManager.playSound('clank');
+      this.scene.showFloatingText(this.x, this.y - 12, 'DEFLECT', '#c084fc', 11);
+      this.scene.triggerMicroShake(80, 0.004);
+      return;
     }
 
-    // Deduct pickaxe durability
+    // 2. Special Bounce Cushion Super-Trampoline
+    if (block.blockType.specialEffect === 'bounce') {
+      const impulseY = -block.blockType.bounceImpulse || -13.5;
+      const impulseX = (Math.random() - 0.5) * 8;
+      this.setVelocity(impulseX, impulseY);
+      this.setAngularVelocity((Math.random() - 0.5) * 0.4);
+      this.scene.particleManager.emitBounceSparkles(block.x, block.y);
+      this.scene.audioManager.playSound('boing');
+      this.scene.showFloatingText(block.x, block.y - 20, 'BOING!!', '#d946ef', 16);
+      block.breakBlock(false);
+      this.blocksMined++;
+      this.totalScore += block.blockType.scoreValue || 50;
+      return;
+    }
+
+    // 3. Destroy Block Instantly upon contact
+    const res = block.breakBlock(true);
+    this.blocksMined++;
+    this.totalScore += res.score;
+
+    // 4. Durability Decay:
+    // Regular blocks deduct 1 point; hard blocks / ores deduct 2-3 points
     const cost = block.blockType.durabilityCost ?? 1;
     this.reduceDurability(cost);
 
-    // -------------------------------------------------------------
-    // MOMENTUM TRANSFER & GLANCING DEFLECTION DYNAMICS
-    // -------------------------------------------------------------
-    const currentVx = this.body.velocity.x;
-    const currentVy = this.body.velocity.y;
-    const currentSpin = this.body.angularVelocity;
+    // 5. Resistance Damping to vertical velocity (reduce velocity.y by 8-15%)
+    const curVy = this.body.velocity.y;
+    const damping = Phaser.Math.FloatBetween(0.85, 0.92);
+    let newVy = Math.max(0, curVy) * damping;
 
-    // Determine impact vector (from block center to pickaxe center)
-    const dx = this.x - block.x;
-    const dy = this.y - block.y;
-    const dist = Math.hypot(dx, dy) || 1;
-    const nx = normal ? normal.x : (dx / dist);
-    const ny = normal ? normal.y : (dy / dist);
-
-    // A. Transfer Linear Downward Velocity into Angular Spin
-    // Collisions on the right side spin counter-clockwise, left side spin clockwise
-    const spinDirection = nx >= 0 ? 1 : -1;
-    const linearToSpinTransfer = spinDirection * (Math.abs(currentVy) * 0.016 + 0.04);
-
-    // B. Transfer Existing Spin into Tangential Horizontal Kick (Grip & Launch)
-    const spinToLinearKick = -currentSpin * 14.0;
-
-    // C. Glancing Deflection (Kick sideways rather than killing momentum)
-    let lateralDeflection = 0;
-    if (Math.abs(currentVx) < 1.8) {
-      const deflectDir = Math.abs(nx) > 0.15 ? Math.sign(nx) : (Math.random() > 0.5 ? 1 : -1);
-      const deflectMag = Math.min(5.2, Math.max(2.4, Math.abs(currentVy) * 0.42));
-      lateralDeflection = deflectDir * deflectMag;
+    // Maintain a minimum downward fall speed so the pickaxe continuously plows downward through clusters
+    const minDownSpeed = 3.6;
+    if (newVy < minDownSpeed) {
+      newVy = minDownSpeed;
     }
 
-    // D. Randomized Micro-Impulses (±5-10% torque and horizontal force)
-    const torqueJitter = (Math.random() - 0.5) * 0.09;
-    const forceJitterX = (Math.random() - 0.5) * 1.3;
+    // 6. Horizontal Kick / Deflection depending on which side of the block was struck
+    const dx = this.x - block.x;
+    const sideSign = dx >= 0 ? 1 : -1;
+    const kickVariance = Phaser.Math.FloatBetween(-0.5, 0.5);
+    const kickX = sideSign * Phaser.Math.FloatBetween(0.5, 1.2) + kickVariance;
+    const clampedKickX = Phaser.Math.Clamp(kickX, -1.5, 1.5);
+    const newVx = this.body.velocity.x * 0.75 + clampedKickX;
 
-    // Apply synthesized post-collision velocities
-    const newVx = currentVx * 0.65 + spinToLinearKick * 0.25 + lateralDeflection + forceJitterX;
-    const newVy = Math.min(-1.8, currentVy * -0.32); // Controlled upward rebound
-    const newSpin = currentSpin * 0.6 + linearToSpinTransfer + torqueJitter;
+    // Impact torque from collision side
+    const torqueKick = sideSign * Phaser.Math.FloatBetween(0.04, 0.08);
+    const newSpin = this.body.angularVelocity * 0.8 + torqueKick;
 
     this.setVelocity(newVx, newVy);
     this.setAngularVelocity(newSpin);
-
-    // Special Bounce Block Super-Trampoline
-    if (block.blockType.specialEffect === 'bounce') {
-      const impulseY = -block.blockType.bounceImpulse;
-      const impulseX = (Math.random() - 0.5) * 11;
-      this.setVelocity(impulseX, impulseY);
-      this.setAngularVelocity((Math.random() - 0.5) * 0.4);
-      this.scene.particleManager.emitBounceSparkles(this.x, this.y);
-    }
   }
 
   /**
@@ -315,9 +312,8 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
       // Find lowest HP block to carve an escape route
       nearbyBlocks.sort((a, b) => a.hp - b.hp);
       const targetBlock = nearbyBlocks[0];
-      const damage = this.tierData.collisionDamage * 1.6;
-      const res = targetBlock.takeDamage(damage);
-      if (res.destroyed) {
+      const res = targetBlock.takeDamage(100);
+      if (res && res.destroyed) {
         this.blocksMined++;
         this.totalScore += res.score;
       }
@@ -344,6 +340,42 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
     this.durability = Math.max(0, this.durability - amount);
     this.updateStatusText();
 
+    // Pulse & Flash Red briefly whenever durability is deducted
+    if (this.statusContainer && this.durabilityText) {
+      this.durabilityText.setColor('#ef4444');
+
+      if (this.statusPill) {
+        this.statusPill.clear();
+        this.statusPill.fillStyle(0x7f1d1d, 0.95); // Deep crimson flash
+        this.statusPill.fillRoundedRect(-58, -13, 116, 26, 6);
+        this.statusPill.lineStyle(1.5, 0xef4444, 1);
+        this.statusPill.strokeRoundedRect(-58, -13, 116, 26, 6);
+      }
+
+      if (this.pulseTween) {
+        this.pulseTween.stop();
+      }
+      this.statusContainer.setScale(1.0);
+      this.pulseTween = this.scene.tweens.add({
+        targets: this.statusContainer,
+        scale: 1.25,
+        duration: 70,
+        yoyo: true,
+        ease: 'Quad.easeOut',
+        onComplete: () => {
+          this.pulseTween = null;
+          if (this.statusPill && !this.isDead) {
+            this.statusPill.clear();
+            this.statusPill.fillStyle(0x090b14, 0.88);
+            this.statusPill.fillRoundedRect(-58, -13, 116, 26, 6);
+            this.statusPill.lineStyle(1.5, 0x334155, 1);
+            this.statusPill.strokeRoundedRect(-58, -13, 116, 26, 6);
+          }
+          this.updateStatusText();
+        }
+      });
+    }
+
     // Flash white on impact
     this.setTint(0xffffff);
     this.scene.time.delayedCall(70, () => {
@@ -361,32 +393,50 @@ export class Pickaxe extends Phaser.Physics.Matter.Sprite {
     this.scene.audioManager.playSound('repair_chime');
   }
 
+  /**
+   * Upgrade Blocks:
+   * Instantly increases max durability (e.g. 80 -> 160 -> 260 -> 400),
+   * restores current durability to full, morphs pickaxe texture into next tier,
+   * and triggers level-up particle flash.
+   */
   upgradeTier() {
     const next = getNextTier(this.tierData.id);
-    if (!next) return null;
+    if (!next) {
+      // Max Tier: full durability repair
+      this.durability = this.maxDurability;
+      this.updateStatusText();
+      this.scene.particleManager.emitUpgradeBlast(this.x, this.y);
+      this.scene.audioManager.playSound('upgrade_fanfare');
+      return null;
+    }
 
     this.tierData = next;
     this.setTexture(next.texture);
     this.setDisplaySize(next.size, next.size);
     this.setOrigin(next.originX ?? 0.515, next.originY ?? 0.455);
+
+    // 1. Increase max durability & restore current durability to full
     this.maxDurability = next.durability;
     this.durability = next.durability;
 
-    // Rebuild compound body for new tier dimensions & densities
+    // 2. Rebuild compound body for new tier dimensions & densities while preserving position & momentum
     this.buildCompoundBody(next);
 
-    this.updateStatusText();
+    // 3. Trigger level-up particle flash & fanfare
+    this.scene.particleManager.emitUpgradeBlast(this.x, this.y);
     this.scene.audioManager.playSound('upgrade_fanfare');
+
+    this.updateStatusText();
     return next;
   }
 
   updateStatusText() {
     if (this.durabilityText) {
-      this.durabilityText.setText(`${this.durability}`);
+      this.durabilityText.setText(`❤️ ${this.durability}/${this.maxDurability}`);
       const ratio = this.durability / this.maxDurability;
       if (ratio > 0.5) {
         this.durabilityText.setColor('#ffffff');
-      } else if (ratio > 0.2) {
+      } else if (ratio > 0.25) {
         this.durabilityText.setColor('#fbbf24');
       } else {
         this.durabilityText.setColor('#ef4444');

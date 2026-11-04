@@ -126,14 +126,12 @@ export class GameScene extends Phaser.Scene {
     const vy = bodyPickaxe.velocity.y;
     const impactSpeed = Math.hypot(vx, vy);
 
-    if (impactSpeed >= GAME_CONFIG.PHYSICS.MIN_IMPACT_VELOCITY) {
-      pickaxe.onHitBlock(block, impactSpeed, normal);
-      this.updateHudStats();
+    pickaxe.onHitBlock(block, impactSpeed, normal);
+    this.updateHudStats();
 
-      // Trigger micro-shake (intensity 0.004, 80ms) on heavy hits or ore contacts
-      if (impactSpeed >= 3.4 || block.hp <= 0 || block.blockType.id.includes('ore') || block.blockType.id === 'hard_stone') {
-        this.triggerMicroShake(80, 0.004);
-      }
+    // Trigger micro-shake (intensity 0.004, 80ms) on heavy hits or ore contacts
+    if (block.blockType.id.includes('ore') || block.blockType.id === 'hard_stone' || block.blockType.id === 'red_volcanic') {
+      this.triggerMicroShake(80, 0.004);
     }
   }
 
@@ -347,7 +345,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     if (this.durabilityValueText) {
-      this.durabilityValueText.setText(`${this.pickaxe.durability} HP`);
+      this.durabilityValueText.setText(`${this.pickaxe.durability}/${this.pickaxe.maxDurability}`);
     }
   }
 
